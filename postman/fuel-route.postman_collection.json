@@ -1,0 +1,243 @@
+{
+  "info": {
+    "_postman_id": "a91e57c1-8452-47d3-9f82-fuel-routing-v1",
+    "name": "Fuel-Efficient Route Planner API",
+    "description": "Postman collection for the Django Fuel Route Assessment API.\n\nEndpoints:\n- GET /api/health/\n- POST /api/route/\n\nPaste `response.route_geojson` into https://geojson.io to visualize the driving route line and all optimal fuel stop pins on an interactive map.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/health/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "health",
+            ""
+          ]
+        },
+        "description": "Liveness check endpoint. Returns HTTP 200 with `{\"status\": \"ok\"}` when the service is healthy."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Short Route (Chicago, IL -> Dallas, TX)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Dallas, TX\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "description": "Plans optimal fuel stops for an intermediate driving route (~967 miles). Vehicle begins with a full 500-mile tank at start. Returns optimal cost-effective stops along Interstate corridor."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Long Multi-Stop Route (New York, NY -> Los Angeles, CA)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "description": "Cross-country route across the continental United States (~2,794 miles). Computes the full greedy lookahead chain of optimal fuel stops, minimizing total fuel spending while preserving reserve capacity."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Coordinates-Only Route (Skip Geocoding)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"41.8781,-87.6298\",\n  \"finish\": \"32.7767,-96.7970\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "description": "Direct latitude/longitude coordinate strings. Bypasses Nominatim geocoding completely, executing exactly 1 external call (OSRM routing) or 0 on cached repeat."
+      },
+      "response": []
+    },
+    {
+      "name": "5. Error Case - Missing Required Finish Field",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "description": "Validation error demonstration: missing the required `finish` field. Expects HTTP 400 Bad Request with field error details."
+      },
+      "response": []
+    },
+    {
+      "name": "6. Error Case - Identical Origin & Destination",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Chicago, IL\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "description": "Cross-field validation error demonstration: `start` and `finish` locations cannot be identical. Expects HTTP 400 Bad Request with descriptive message."
+      },
+      "response": []
+    }
+  ]
+}
