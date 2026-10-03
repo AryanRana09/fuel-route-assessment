@@ -65,8 +65,8 @@ class NoFeasibleRouteError(Exception):
 # Vehicle / algorithm constants
 # ---------------------------------------------------------------------------
 
-MAX_RANGE_MILES: float = 500.0   # max distance on a full tank
-MPG: float = 10.0                 # miles per gallon
+from django.conf import settings
+
 CORRIDOR_MILES: float = float(os.getenv("FUEL_CORRIDOR_MILES", "10"))
 RESAMPLE_INTERVAL_MILES: float = 1.0  # route point spacing for spatial search
 
@@ -345,8 +345,8 @@ def find_corridor_stations(
 def _plan_greedy_stops(
     candidates: list[_CandidateStation],
     total_miles: float,
-    max_range: float = MAX_RANGE_MILES,
-    mpg: float = MPG,
+    max_range: float,
+    mpg: float,
 ) -> tuple[list[dict], float]:
     """
     Core greedy algorithm — see module docstring for full description.
@@ -484,7 +484,11 @@ def _plan_greedy_stops(
 # ---------------------------------------------------------------------------
 
 
-def plan_fuel_stops(route: dict) -> dict:
+def plan_fuel_stops(
+    route: dict,
+    max_range: float | None = None,
+    mpg: float | None = None,
+) -> dict:
     """
     Compute the optimal (minimum-cost) fuel stops for a route.
 
@@ -517,11 +521,20 @@ def plan_fuel_stops(route: dict) -> dict:
     # 2. Find corridor stations (vectorised, uses module-level KD-tree on stations)
     candidates = find_corridor_stations(route_points)
 
+    if max_range is None:
+        max_range = float(settings.DEFAULT_MAX_RANGE_MILES)
+    if mpg is None:
+        mpg = float(settings.DEFAULT_MPG)
+
     # 3. Run greedy optimiser
-    stops, total_cost = _plan_greedy_stops(candidates, total_miles)
+    stops, total_cost = _plan_greedy_stops(
+        candidates, total_miles, max_range, mpg
+    )
 
     return {
         "stops": stops,
         "total_cost": total_cost,
         "total_miles": total_miles,
+        "max_range": max_range,
+        "mpg": mpg,
     }

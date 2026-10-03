@@ -23,6 +23,9 @@ SECRET_KEY: str = os.environ["DJANGO_SECRET_KEY"]
 
 DEBUG: bool = os.getenv("DJANGO_DEBUG", "False").lower() == "true"
 
+DEFAULT_MAX_RANGE_MILES: float = float(os.getenv("DEFAULT_MAX_RANGE_MILES", "500.0"))
+DEFAULT_MPG: float = float(os.getenv("DEFAULT_MPG", "10.0"))
+
 ALLOWED_HOSTS: list[str] = os.getenv(
     "DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver,*"
 ).split(",")

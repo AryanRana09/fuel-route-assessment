@@ -19,8 +19,6 @@ import numpy as np
 import pytest
 
 from routing.services.fuel_planner import (
-    MAX_RANGE_MILES,
-    MPG,
     NoFeasibleRouteError,
     _CandidateStation,
     _StationRecord,
@@ -123,7 +121,7 @@ class TestPlanGreedyStops:
     def test_no_stops_needed_within_range(self) -> None:
         """If destination is within one full tank, no stops are needed."""
         candidates = [_make_candidate(mile=200.0, price=3.50, sid=1)]
-        stops, total_cost = _plan_greedy_stops(candidates, total_miles=400.0)
+        stops, total_cost = _plan_greedy_stops(candidates, total_miles=400.0, max_range=500.0, mpg=10.0)
         assert stops == []
         assert total_cost == 0.0
 
@@ -133,7 +131,7 @@ class TestPlanGreedyStops:
         Must stop there and buy enough to cover the remaining 300 miles.
         """
         candidates = [_make_candidate(mile=400.0, price=3.00, sid=1)]
-        stops, total_cost = _plan_greedy_stops(candidates, total_miles=700.0)
+        stops, total_cost = _plan_greedy_stops(candidates, total_miles=700.0, max_range=500.0, mpg=10.0)
 
         assert len(stops) == 1
         stop = stops[0]
@@ -142,7 +140,7 @@ class TestPlanGreedyStops:
         # pos + max_range = 900 > 700 so algorithm uses the "near destination"
         # branch: buy only what's needed to coast to mile 700.
         # miles_to_buy = max(0, 700 - 400 - 100) = 200 miles -> 20 gallons.
-        expected_gallons = (700.0 - 400.0 - (MAX_RANGE_MILES - 400.0)) / MPG  # = 20.0
+        expected_gallons = (700.0 - 400.0 - (500.0 - 400.0)) / 10.0  # = 20.0
         assert stop["gallons_purchased"] == pytest.approx(expected_gallons, rel=1e-3)
         assert stop["cost"] == pytest.approx(expected_gallons * 3.00, rel=1e-3)
 
@@ -156,7 +154,7 @@ class TestPlanGreedyStops:
             _make_candidate(mile=200.0, price=4.00, sid=1),
             _make_candidate(mile=350.0, price=2.50, sid=2),
         ]
-        stops, _ = _plan_greedy_stops(candidates, total_miles=700.0)
+        stops, _ = _plan_greedy_stops(candidates, total_miles=700.0, max_range=500.0, mpg=10.0)
         mile_markers = [s["mile_marker"] for s in stops]
         # Must stop at 350 (the cheap one); may also stop at 200 if needed
         assert 350.0 in mile_markers
@@ -173,7 +171,7 @@ class TestPlanGreedyStops:
             _make_candidate(mile=300.0, price=3.80, sid=1),  # expensive but reachable
             _make_candidate(mile=600.0, price=2.00, sid=2),  # cheap but too far initially
         ]
-        stops, _ = _plan_greedy_stops(candidates, total_miles=800.0)
+        stops, _ = _plan_greedy_stops(candidates, total_miles=800.0, max_range=500.0, mpg=10.0)
         mile_markers = [s["mile_marker"] for s in stops]
         # Must stop somewhere to reach mile 600
         assert len(stops) >= 1
@@ -187,7 +185,7 @@ class TestPlanGreedyStops:
         """
         # One station at mile 400, no cheaper ahead
         candidates = [_make_candidate(mile=400.0, price=3.00, sid=1)]
-        stops, _ = _plan_greedy_stops(candidates, total_miles=850.0)
+        stops, _ = _plan_greedy_stops(candidates, total_miles=850.0, max_range=500.0, mpg=10.0)
         # tank at arrival = 500 - 400 = 100; must fill to 500 to cover 450 remaining
         assert len(stops) == 1
         # At mile 400, tank = 100 miles remaining.  pos + max_range = 900 > 850,
@@ -201,7 +199,7 @@ class TestPlanGreedyStops:
             _make_candidate(mile=300.0, price=3.00, sid=1),
             _make_candidate(mile=650.0, price=2.50, sid=2),
         ]
-        stops, total_cost = _plan_greedy_stops(candidates, total_miles=900.0)
+        stops, total_cost = _plan_greedy_stops(candidates, total_miles=900.0, max_range=500.0, mpg=10.0)
         expected = sum(s["cost"] for s in stops)
         assert total_cost == pytest.approx(expected, rel=1e-5)
 
@@ -211,7 +209,7 @@ class TestPlanGreedyStops:
             _make_candidate(mile=300.0, price=3.00, sid=1),
             _make_candidate(mile=600.0, price=3.50, sid=2),
         ]
-        stops, _ = _plan_greedy_stops(candidates, total_miles=900.0)
+        stops, _ = _plan_greedy_stops(candidates, total_miles=900.0, max_range=500.0, mpg=10.0)
         for i in range(1, len(stops)):
             assert stops[i]["cumulative_cost"] >= stops[i - 1]["cumulative_cost"]
 
@@ -222,24 +220,24 @@ class TestPlanGreedyStops:
             _make_candidate(mile=800.0, price=3.00, sid=2),  # 600-mile gap
         ]
         with pytest.raises(NoFeasibleRouteError, match="600"):
-            _plan_greedy_stops(candidates, total_miles=1000.0)
+            _plan_greedy_stops(candidates, total_miles=1000.0, max_range=500.0, mpg=10.0)
 
     def test_infeasible_final_gap_raises_error(self) -> None:
         """Gap between last station and destination > MAX_RANGE must raise."""
         candidates = [_make_candidate(mile=100.0, price=3.00, sid=1)]
         with pytest.raises(NoFeasibleRouteError, match="destination"):
-            _plan_greedy_stops(candidates, total_miles=700.0)
+            _plan_greedy_stops(candidates, total_miles=700.0, max_range=500.0, mpg=10.0)
 
     def test_empty_candidates_within_range_no_stops(self) -> None:
         """No stations, but destination within one tank → empty stop list."""
-        stops, total_cost = _plan_greedy_stops([], total_miles=300.0)
+        stops, total_cost = _plan_greedy_stops([], total_miles=300.0, max_range=500.0, mpg=10.0)
         assert stops == []
         assert total_cost == 0.0
 
     def test_empty_candidates_out_of_range_raises(self) -> None:
         """No stations, destination beyond one tank → NoFeasibleRouteError."""
         with pytest.raises(NoFeasibleRouteError):
-            _plan_greedy_stops([], total_miles=600.0)
+            _plan_greedy_stops([], total_miles=600.0, max_range=500.0, mpg=10.0)
 
     def test_stop_fields_present(self) -> None:
         """Each stop dict must contain all required fields."""
@@ -249,7 +247,7 @@ class TestPlanGreedyStops:
             "cost", "cumulative_cost",
         }
         candidates = [_make_candidate(mile=400.0, price=3.00, sid=1)]
-        stops, _ = _plan_greedy_stops(candidates, total_miles=700.0)
+        stops, _ = _plan_greedy_stops(candidates, total_miles=700.0, max_range=500.0, mpg=10.0)
         assert len(stops) == 1
         assert required.issubset(stops[0].keys())
 
@@ -274,13 +272,53 @@ class TestPlanGreedyStops:
             ],
             key=lambda c: c.mile_marker,
         )
-        stops, _ = _plan_greedy_stops(candidates, total_miles=1500.0)
+        stops, _ = _plan_greedy_stops(candidates, total_miles=1500.0, max_range=500.0, mpg=10.0)
         # Driver should never buy at $4.00 stations since $2.50 ones are always
         # within a 400-mile hop (well within 500-mile range)
         expensive_purchases = [s for s in stops if s["price_per_gallon"] > 3.00]
         assert expensive_purchases == [], (
             f"Bought expensive fuel at: {[s['mile_marker'] for s in expensive_purchases]}"
         )
+
+    def test_max_range_affects_stop_count(self) -> None:
+        """A smaller max_range requires more stops."""
+        candidates = [
+            _make_candidate(mile=200.0, price=3.00, sid=1),
+            _make_candidate(mile=400.0, price=3.00, sid=2),
+            _make_candidate(mile=600.0, price=3.00, sid=3),
+            _make_candidate(mile=800.0, price=3.00, sid=4),
+        ]
+        stops_300, _ = _plan_greedy_stops(candidates, total_miles=1000.0, max_range=300.0, mpg=10.0)
+        stops_800, _ = _plan_greedy_stops(candidates, total_miles=1000.0, max_range=800.0, mpg=10.0)
+        assert len(stops_300) > len(stops_800)
+
+    def test_mpg_affects_total_cost(self) -> None:
+        """Higher MPG reduces total cost proportionally."""
+        candidates = [_make_candidate(mile=300.0, price=3.00, sid=1)]
+        _, cost_10 = _plan_greedy_stops(candidates, total_miles=600.0, max_range=500.0, mpg=10.0)
+        _, cost_20 = _plan_greedy_stops(candidates, total_miles=600.0, max_range=500.0, mpg=20.0)
+        assert cost_20 == pytest.approx(cost_10 / 2.0)
+
+    def test_small_range_raises_infeasible(self) -> None:
+        """max_range=50 with 120 mile gaps raises error with '50' in message."""
+        candidates = [
+            _make_candidate(mile=120.0, price=3.00, sid=1),
+            _make_candidate(mile=240.0, price=3.00, sid=2),
+        ]
+        with pytest.raises(NoFeasibleRouteError, match="50"):
+            _plan_greedy_stops(candidates, total_miles=300.0, max_range=50.0, mpg=10.0)
+
+    def test_final_leg_shorter_than_range_no_extra_stop(self) -> None:
+        """Final leg is shorter than range, so we should coast to the end."""
+        # tank = 300, stop at 200, remaining = 200, dest = 400.
+        candidates = [
+            _make_candidate(mile=200.0, price=3.00, sid=1),
+            _make_candidate(mile=300.0, price=4.00, sid=2),
+        ]
+        stops, _ = _plan_greedy_stops(candidates, total_miles=400.0, max_range=300.0, mpg=10.0)
+        # Should stop at 200, and from 200 we can reach 400 (300 range), so no stop at 300.
+        mile_markers = [s["mile_marker"] for s in stops]
+        assert mile_markers == [200.0]
 
 
 # ---------------------------------------------------------------------------

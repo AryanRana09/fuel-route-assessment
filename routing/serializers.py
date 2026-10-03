@@ -32,6 +32,18 @@ class RouteRequestSerializer(serializers.Serializer):
         trim_whitespace=True,
         help_text='Finish location: US place name or "lat,lng" string.',
     )
+    max_range_miles = serializers.FloatField(
+        required=False,
+        min_value=50.0,
+        max_value=2000.0,
+        help_text="Optional max vehicle range in miles (default 500).",
+    )
+    mpg = serializers.FloatField(
+        required=False,
+        min_value=1.0,
+        max_value=100.0,
+        help_text="Optional fuel efficiency in miles per gallon (default 10).",
+    )
 
     def validate(self, data: dict) -> dict:
         """Cross-field validation: start and finish must differ."""

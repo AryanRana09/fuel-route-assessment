@@ -114,7 +114,7 @@ class RouteView(APIView):
     -----------------
     * **200** – success
     * **400** – invalid input (missing field, place not geocodable)
-    * **422** – no feasible route (gap between stations > 500 mi)
+    * **422** – no feasible route (gap between stations > max_range mi)
     * **502** – upstream routing API unavailable or returned an error
     """
 
@@ -129,6 +129,8 @@ class RouteView(APIView):
 
         start_str: str = serializer.validated_data["start"]
         finish_str: str = serializer.validated_data["finish"]
+        max_range_miles: float | None = serializer.validated_data.get("max_range_miles")
+        mpg: float | None = serializer.validated_data.get("mpg")
 
         # Pre-compute API call count (before any network I/O)
         api_calls = _count_api_calls(start_str, finish_str)
@@ -144,7 +146,11 @@ class RouteView(APIView):
             t_ext_end = time.monotonic()
             external_call_ms = round((t_ext_end - t_ext_start) * 1000)
 
-            plan = plan_fuel_stops(route)
+            plan = plan_fuel_stops(
+                route,
+                max_range=max_range_miles,
+                mpg=mpg,
+            )
 
         except GeocodingError as exc:
             return Response(
@@ -193,6 +199,8 @@ class RouteView(APIView):
             compute_ms=compute_ms,
             external_call_ms=external_call_ms,
             total_time_ms=total_time_ms,
+            max_range_miles=max_range_miles,
+            mpg=mpg,
         )
         return Response(payload, status=status.HTTP_200_OK)
 

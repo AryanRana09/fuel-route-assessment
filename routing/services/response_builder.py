@@ -9,6 +9,7 @@ on an interactive map.
 """
 
 from __future__ import annotations
+from django.conf import settings
 
 
 def build_geojson(route: dict, stops: list[dict]) -> dict:
@@ -92,6 +93,8 @@ def build_route_response(
     compute_ms: int,
     external_call_ms: int = 0,
     total_time_ms: int | None = None,
+    max_range_miles: float | None = None,
+    mpg: float | None = None,
 ) -> dict:
     """
     Assemble the complete ``POST /api/route/`` response dict.
@@ -149,6 +152,15 @@ def build_route_response(
         "total_fuel_cost_usd": round(total_cost, 2),
         "total_gallons": total_gallons,
         "fuel_stops": rounded_stops,
+        "vehicle": {
+            "max_range_miles": max_range_miles if max_range_miles is not None else settings.DEFAULT_MAX_RANGE_MILES,
+            "mpg": mpg if mpg is not None else settings.DEFAULT_MPG,
+            "tank_capacity_gallons": round(
+                (max_range_miles if max_range_miles is not None else settings.DEFAULT_MAX_RANGE_MILES) 
+                / (mpg if mpg is not None else settings.DEFAULT_MPG), 
+                2
+            ),
+        },
         "route_geojson": build_geojson(route, stops),
         "meta": {
             "external_api_calls": api_calls,

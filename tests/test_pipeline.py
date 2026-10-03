@@ -118,19 +118,29 @@ class TestGeocoder:
     """Tests for the offline geocode() function."""
 
     def test_known_city_returns_coords(self) -> None:
-        """A well-known city should resolve with exact=True."""
+        """A well-known city should resolve."""
         result = geocode("Houston", "TX")
         assert result is not None
-        assert result.exact is True
         # Houston is roughly 29.7°N, 95.4°W
         assert 29.0 < result.lat < 30.5
         assert -96.5 < result.lng < -94.5
 
-    def test_unknown_city_falls_back_to_state(self) -> None:
-        """A made-up city should fall back to state centroid (exact=False)."""
+    def test_unknown_city_returns_none(self) -> None:
+        """A made-up city should return None (no state fallback)."""
         result = geocode("Zzzyxnonexistent", "TX")
-        assert result is not None
-        assert result.exact is False
+        assert result is None
+
+    def test_small_towns_resolve_via_postal(self) -> None:
+        """Small towns should resolve using the postal code data."""
+        res1 = geocode("Story City", "IA")
+        assert res1 is not None
+        assert abs(res1.lat - 42.18) < 0.1
+        assert abs(res1.lng - -93.60) < 0.1
+
+        res2 = geocode("Peru", "IL")
+        assert res2 is not None
+        assert abs(res2.lat - 41.33) < 0.1
+        assert abs(res2.lng - -89.13) < 0.1
 
     def test_normalise_strips_accents(self) -> None:
         """Normaliser converts accented chars to ASCII equivalents."""

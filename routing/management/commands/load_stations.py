@@ -94,20 +94,23 @@ class Command(BaseCommand):
 
         # 4. Geocode (offline)
         stations: list[Station] = []
-        n_geocoded = 0
-        n_unmatched = 0
+        n_postal = 0
+        n_geonamescache = 0
+        n_skipped = 0
+        skipped_samples = []
 
         for row in deduped:
             result = geocode(row["city"], row["state"])
             if result is None:
-                n_unmatched += 1
+                n_skipped += 1
+                if len(skipped_samples) < 20:
+                    skipped_samples.append(f"{row['city']}, {row['state']} (OPIS ID {row['opis_id']})")
                 continue
-            if not result.exact:
-                # Count state-centroid fallbacks as "unmatched" for honesty,
-                # but still include them so the dataset is as complete as possible.
-                n_unmatched += 1
-            else:
-                n_geocoded += 1
+            
+            if result.source == "postal":
+                n_postal += 1
+            elif result.source == "geonamescache":
+                n_geonamescache += 1
 
             stations.append(
                 Station(
@@ -132,12 +135,18 @@ class Command(BaseCommand):
         warm_station_index()
 
         # 6. Summary
+        if skipped_samples:
+            self.stdout.write(self.style.WARNING("\nFirst 20 skipped (unmatched) stations:"))
+            for s in skipped_samples:
+                self.stdout.write(f"  - {s}")
+
         self.stdout.write(self.style.SUCCESS("\n-- load_stations summary --"))
         self.stdout.write(f"  Rows read          : {n_read:>6,}")
         self.stdout.write(f"  Dropped (non-US)   : {n_dropped_foreign:>6,}")
         self.stdout.write(f"  Duplicates merged  : {n_dupes_merged:>6,}")
-        self.stdout.write(f"  Geocoded (exact)   : {n_geocoded:>6,}")
-        self.stdout.write(f"  Unmatched / approx : {n_unmatched:>6,}")
+        self.stdout.write(f"  Matched via postal : {n_postal:>6,}")
+        self.stdout.write(f"  Matched via geonames: {n_geonamescache:>6,}")
+        self.stdout.write(f"  Skipped (unmatched): {n_skipped:>6,}")
         self.stdout.write(f"  Stations saved     : {len(stations):>6,}")
         self.stdout.write(self.style.SUCCESS("-- done --\n"))
 

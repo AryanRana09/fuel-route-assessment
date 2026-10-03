@@ -1,0 +1,3 @@
+# Dev-only requirements for generating docs/PROJECT_REPORT.pdf
+reportlab>=4.0.0
+matplotlib>=3.8.0

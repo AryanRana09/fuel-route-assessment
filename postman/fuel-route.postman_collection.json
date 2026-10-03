@@ -120,6 +120,46 @@
       "response": []
     },
     {
+      "name": "3b. Custom Vehicle (300 mi, 25 mpg)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\",\n  \"max_range_miles\": 300.0,\n  \"mpg\": 25.0\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "description": "Cross-country route with a custom vehicle configuration (300-mile max range and 25 MPG fuel economy). Expects more stops and lower fuel cost."
+      },
+      "response": []
+    },
+    {
       "name": "4. Coordinates-Only Route (Skip Geocoding)",
       "request": {
         "method": "POST",
@@ -236,6 +276,46 @@
           ]
         },
         "description": "Cross-field validation error demonstration: `start` and `finish` locations cannot be identical. Expects HTTP 400 Bad Request with descriptive message."
+      },
+      "response": []
+    },
+    {
+      "name": "7. Error Case - Invalid Vehicle Params",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Dallas, TX\",\n  \"max_range_miles\": 10,\n  \"mpg\": 200\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "description": "Validation error demonstration: invalid vehicle parameters out of range. Expects HTTP 400 Bad Request with descriptive message."
       },
       "response": []
     }

@@ -26,7 +26,7 @@ class GeoResult(NamedTuple):
 
     lat: float
     lng: float
-    exact: bool  # False when only a state-level fallback was found
+    source: str  # "postal" or "geonamescache"
 
 
 # ---------------------------------------------------------------------------
@@ -58,27 +58,23 @@ def _build_city_index() -> dict[tuple[str, str], tuple[float, float]]:
     return {k: (v[0], v[1]) for k, v in index.items()}
 
 
-def _build_state_centroid_index() -> dict[str, tuple[float, float]]:
-    """
-    Return a rough centroid per US state, averaged from all geonamescache
-    cities in that state.  Used only as a last-resort fallback.
-    """
-    buckets: dict[str, list[tuple[float, float]]] = {}
-    for city in _gc.get_cities().values():
-        if city["countrycode"] != "US":
-            continue
-        state = city["admin1code"]
-        buckets.setdefault(state, []).append(
-            (float(city["latitude"]), float(city["longitude"]))
-        )
+import csv
+import os
 
-    return {
-        state: (
-            sum(p[0] for p in pts) / len(pts),
-            sum(p[1] for p in pts) / len(pts),
-        )
-        for state, pts in buckets.items()
-    }
+def _build_postal_index() -> dict[tuple[str, str], tuple[float, float]]:
+    index = {}
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "us_places.csv")
+    if not os.path.exists(path):
+        return index
+    with open(path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader) # skip header
+        for row in reader:
+            if len(row) >= 4:
+                place = _normalise(row[0])
+                state = row[1]
+                index[(place, state)] = (float(row[2]), float(row[3]))
+    return index
 
 
 # Common city-name suffixes that sometimes differ between the CSV and geonames
@@ -108,8 +104,7 @@ def geocode(city: str, state: str) -> GeoResult | None:
     """
     Return a :class:`GeoResult` for the given US city + state abbreviation.
 
-    Returns ``None`` only when no state-centroid exists either (should never
-    happen for valid US states).
+    Returns ``None`` if no match is found.
 
     Parameters
     ----------
@@ -120,31 +115,35 @@ def geocode(city: str, state: str) -> GeoResult | None:
     """
     norm_city = _normalise(city)
 
-    # 1. Exact match
+    # 1. Exact match (postal data first, then geonamescache)
+    coords = _POSTAL_INDEX.get((norm_city, state))
+    if coords:
+        return GeoResult(*coords, source="postal")
     coords = _CITY_INDEX.get((norm_city, state))
     if coords:
-        return GeoResult(*coords, exact=True)
+        return GeoResult(*coords, source="geonamescache")
 
     # 2. Try progressively stripping common suffixes
     for suffix in _STRIP_SUFFIXES:
         if norm_city.endswith(suffix):
             candidate = norm_city[: -len(suffix)].strip()
+            coords = _POSTAL_INDEX.get((candidate, state))
+            if coords:
+                return GeoResult(*coords, source="postal")
             coords = _CITY_INDEX.get((candidate, state))
             if coords:
-                return GeoResult(*coords, exact=True)
+                return GeoResult(*coords, source="geonamescache")
 
     # 3. Try removing everything after a slash or dash (e.g. "Abilene/Clyde")
     for sep in ("/", "-"):
         if sep in norm_city:
             candidate = norm_city.split(sep)[0].strip()
+            coords = _POSTAL_INDEX.get((candidate, state))
+            if coords:
+                return GeoResult(*coords, source="postal")
             coords = _CITY_INDEX.get((candidate, state))
             if coords:
-                return GeoResult(*coords, exact=True)
-
-    # 4. State-centroid fallback
-    centroid = _STATE_CENTROIDS.get(state)
-    if centroid:
-        return GeoResult(*centroid, exact=False)
+                return GeoResult(*coords, source="geonamescache")
 
     return None
 
@@ -175,4 +174,4 @@ def _normalise(text: str) -> str:
 
 # Module-level singletons built once (after _normalise is defined)
 _CITY_INDEX: dict[tuple[str, str], tuple[float, float]] = _build_city_index()
-_STATE_CENTROIDS: dict[str, tuple[float, float]] = _build_state_centroid_index()
+_POSTAL_INDEX: dict[tuple[str, str], tuple[float, float]] = _build_postal_index()

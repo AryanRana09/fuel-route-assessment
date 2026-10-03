@@ -96,7 +96,8 @@ python manage.py migrate
 
 ## Data Pipeline (Loading Stations)
 
-The OPIS fuel price dataset (`data/fuel-prices-for-be-assessment.csv`) contains thousands of truck stop records. The `load_stations` management command cleans, dedupes, geocodes, and loads them into SQLite:
+The OPIS fuel price dataset (`data/fuel-prices-for-be-assessment.csv`) contains thousands of truck stop records. The `load_stations` management command cleans, dedupes, geocodes, and loads them into SQLite.
+We also use a bundled postal code mapping derived from [GeoNames](https://www.geonames.org/) (licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)) to geocode small towns missing from `geonamescache`.
 
 ```bash
 python manage.py load_stations
@@ -170,11 +171,13 @@ Accepts free-text US place names or `"lat,lng"` coordinate strings:
 }
 ```
 
-*Coordinate example:*
+*Coordinate example with optional vehicle parameters:*
 ```json
 {
   "start": "41.8781,-87.6298",
-  "finish": "32.7767,-96.7970"
+  "finish": "32.7767,-96.7970",
+  "max_range_miles": 800.0,
+  "mpg": 15.0
 }
 ```
 
@@ -210,6 +213,11 @@ Accepts free-text US place names or `"lat,lng"` coordinate strings:
       "cumulative_cost": 57.98
     }
   ],
+  "vehicle": {
+    "max_range_miles": 800.0,
+    "mpg": 15.0,
+    "tank_capacity_gallons": 53.33
+  },
   "route_geojson": {
     "type": "FeatureCollection",
     "features": [
@@ -253,8 +261,8 @@ Accepts free-text US place names or `"lat,lng"` coordinate strings:
 
 #### HTTP Status Codes
 - **`200 OK`**: Route and fuel stops planned successfully.
-- **`400 Bad Request`**: Missing required fields, identical start and finish, or location could not be geocoded (`GEOCODING_FAILED`).
-- **`422 Unprocessable Entity`**: No feasible route (`NO_FEASIBLE_ROUTE`). Occurs if any gap between reachable fuel stations (or from the start / to the finish) exceeds the vehicle's 500-mile range.
+- **`400 Bad Request`**: Missing required fields, identical start and finish, invalid vehicle parameters, or location could not be geocoded (`GEOCODING_FAILED`).
+- **`422 Unprocessable Entity`**: No feasible route (`NO_FEASIBLE_ROUTE`). Occurs if any gap between reachable fuel stations (or from the start / to the finish) exceeds the vehicle's maximum range.
 - **`502 Bad Gateway`**: Upstream service failure (`ROUTING_FAILED`, `UPSTREAM_TIMEOUT`, or `UPSTREAM_UNAVAILABLE`).
 
 ---
@@ -308,7 +316,7 @@ Instead of making 8,000+ rate-limited HTTP calls during station loading, the pip
 
 ### 4. Greedy Lookahead Optimizer
 Solves the classic Gas Station Problem with proven polynomial-time optimality:
-1. **Initial State**: Vehicle starts with a full tank (500 miles of range, 10 MPG).
+1. **Initial State**: Vehicle starts with a full tank (configurable max range and MPG per request; defaults to 500 miles and 10 MPG).
 2. **Cheaper Station Ahead**: If a station cheaper than current fuel is reachable within current range, drive there and purchase only the minimum fuel required to reach it.
 3. **Cheapest in Window**: If no cheaper station exists ahead, fill the tank up to the amount needed to reach the cheapest station in the full 500-mile window (or destination).
 4. **Feasibility Guarantee**: If the distance between consecutive reachable stations exceeds 500 miles, raises `NoFeasibleRouteError` (HTTP 422).
@@ -335,8 +343,8 @@ Measured using [`benchmark.py`](file:///c:/Users/aryan/Desktop/Projects/FUEL-ASS
 ## Assumptions & Limitations
 
 ### Assumptions
-1. **Starting Fuel**: The vehicle begins the trip with a full tank (500 miles of range). Fuel purchased at stops is tallied; the initial tank is a sunk cost.
-2. **Fuel Economy**: Constant 10 miles per gallon (0.10 gallons per mile).
+1. **Starting Fuel**: The vehicle begins the trip with a full tank (configurable max range, default 500 miles). Fuel purchased at stops is tallied; the initial tank is a sunk cost.
+2. **Fuel Economy**: Constant miles per gallon (configurable, default 10 MPG).
 3. **Station Locations**: Stations are geocoded to city center coordinates from the OPIS city/state metadata.
 4. **Corridor Radius**: Stations within 10 miles of the route polyline are considered accessible without significant detour penalty (configurable via `FUEL_CORRIDOR_MILES`).
 
@@ -376,5 +384,6 @@ A complete Postman collection is included in [`postman/fuel-route.postman_collec
 4. **Coordinates-Only**: `POST /api/route/` (`"41.8781,-87.6298"` -> `"32.7767,-96.7970"`)
 5. **Error Case - Missing Field**: `POST /api/route/` (missing `finish` -> 400 Bad Request)
 6. **Error Case - Identical Endpoints**: `POST /api/route/` (`Chicago, IL` -> `Chicago, IL` -> 400 Bad Request)
+7. **Error Case - Invalid Vehicle Params**: `POST /api/route/` (out-of-bounds `max_range_miles` -> 400 Bad Request)
 
 Import the file into Postman to test immediately.

@@ -55,6 +55,8 @@ FAKE_PLAN = {
     ],
     "total_cost": 61.0315,
     "total_miles": 2789.45,
+    "max_range": 500.0,
+    "mpg": 10.0,
 }
 
 
@@ -116,6 +118,16 @@ class TestRouteInputValidation:
         resp = client.get("/api/route/")
         assert resp.status_code == 405
 
+    def test_max_range_49_returns_400(self, client: APIClient) -> None:
+        resp = client.post("/api/route/", {"start": "NY", "finish": "LA", "max_range_miles": 49.0}, format="json")
+        assert resp.status_code == 400
+        assert "max_range_miles" in resp.json()
+
+    def test_mpg_0_returns_400(self, client: APIClient) -> None:
+        resp = client.post("/api/route/", {"start": "NY", "finish": "LA", "mpg": 0.0}, format="json")
+        assert resp.status_code == 400
+        assert "mpg" in resp.json()
+
 
 # ---------------------------------------------------------------------------
 # Happy path
@@ -142,9 +154,76 @@ class TestRouteHappyPath:
         data = self._post(client).json()
         required = {
             "start", "finish", "total_distance_miles", "total_fuel_cost_usd",
-            "total_gallons", "fuel_stops", "route_geojson", "meta",
+            "total_gallons", "fuel_stops", "vehicle", "route_geojson", "meta",
         }
         assert required.issubset(data.keys())
+
+    def test_vehicle_info_in_response(self, client: APIClient) -> None:
+        data = self._post(client).json()
+        assert "vehicle" in data
+        assert data["vehicle"]["max_range_miles"] == 500.0
+        assert data["vehicle"]["mpg"] == 10.0
+
+    def test_vehicle_contains_tank_capacity_gallons(self, client: APIClient) -> None:
+        p1, p2, p3 = _mock_services()
+        with p1, p2, p3 as mock_plan:
+            resp = client.post(
+                "/api/route/",
+                {"start": "NY", "finish": "LA", "max_range_miles": 300, "mpg": 15},
+                format="json",
+            )
+            mock_plan.assert_called_once()
+            _, kwargs = mock_plan.call_args
+            assert kwargs.get("max_range") == 300.0
+            assert kwargs.get("mpg") == 15.0
+            
+        data = resp.json()
+        assert "tank_capacity_gallons" in data["vehicle"]
+        assert data["vehicle"]["tank_capacity_gallons"] == 20.0
+
+    def test_custom_vehicle_params_accepted(self, client: APIClient) -> None:
+        p1, p2, p3 = _mock_services()
+        with p1, p2, p3:
+            resp = client.post(
+                "/api/route/",
+                {"start": "41.8781,-87.6298", "finish": "34.0522,-118.2437", "max_range_miles": 800.0, "mpg": 20.0},
+                format="json",
+            )
+        assert resp.status_code == 200
+
+    def test_max_range_affects_stops_returned(self, client: APIClient) -> None:
+        from routing.services.fuel_planner import _CandidateStation, _StationRecord
+        
+        candidates = [
+            _CandidateStation(_StationRecord(i, "S", "A", "C", "TX", 3.0, 0, 0), i * 100.0) 
+            for i in range(1, 10)
+        ]
+        p1 = patch("routing.views.get_route", return_value={"total_miles": 1000.0, "duration_minutes": 100, "geometry": [[0,0], [1,1]]})
+        p2 = patch("routing.views._resolve_location", return_value=(0.0, 0.0))
+        p3 = patch("routing.services.fuel_planner.find_corridor_stations", return_value=candidates)
+        
+        with p1, p2, p3:
+            resp_300 = client.post("/api/route/", {"start": "NY", "finish": "LA", "max_range_miles": 300}, format="json")
+            resp_800 = client.post("/api/route/", {"start": "NY", "finish": "LA", "max_range_miles": 800}, format="json")
+
+        assert len(resp_300.json()["fuel_stops"]) > len(resp_800.json()["fuel_stops"])
+
+    def test_mpg_affects_gallons_and_cost(self, client: APIClient) -> None:
+        from routing.services.fuel_planner import _CandidateStation, _StationRecord
+        
+        candidates = [
+            _CandidateStation(_StationRecord(1, "S", "A", "C", "TX", 3.0, 0, 0), 400.0) 
+        ]
+        p1 = patch("routing.views.get_route", return_value={"total_miles": 800.0, "duration_minutes": 100, "geometry": [[0,0], [1,1]]})
+        p2 = patch("routing.views._resolve_location", return_value=(0.0, 0.0))
+        p3 = patch("routing.services.fuel_planner.find_corridor_stations", return_value=candidates)
+        
+        with p1, p2, p3:
+            resp_10 = client.post("/api/route/", {"start": "NY", "finish": "LA", "mpg": 10}, format="json").json()
+            resp_20 = client.post("/api/route/", {"start": "NY", "finish": "LA", "mpg": 20}, format="json").json()
+
+        assert resp_20["total_gallons"] == pytest.approx(resp_10["total_gallons"] / 2.0)
+        assert resp_20["total_fuel_cost_usd"] == pytest.approx(resp_10["total_fuel_cost_usd"] / 2.0, abs=0.01)
 
     def test_start_finish_have_name_lat_lng(self, client: APIClient) -> None:
         data = self._post(client).json()
@@ -276,6 +355,22 @@ class TestRouteExceptionMapping:
         )
         assert resp.status_code == 422
         assert resp.json()["code"] == "NO_FEASIBLE_ROUTE"
+
+    def test_max_range_50_raises_422_with_message(self, client: APIClient) -> None:
+        from routing.services.fuel_planner import _CandidateStation, _StationRecord
+        
+        candidates = [
+            _CandidateStation(_StationRecord(1, "S", "A", "C", "TX", 3.0, 0, 0), 100.0) 
+        ]
+        p1 = patch("routing.views.get_route", return_value={"total_miles": 800.0, "duration_minutes": 100, "geometry": [[0,0], [1,1]]})
+        p2 = patch("routing.views._resolve_location", return_value=(0.0, 0.0))
+        p3 = patch("routing.services.fuel_planner.find_corridor_stations", return_value=candidates)
+        
+        with p1, p2, p3:
+            resp = client.post("/api/route/", {"start": "NY", "finish": "LA", "max_range_miles": 50}, format="json")
+            
+        assert resp.status_code == 422
+        assert "50" in resp.json()["error"]
 
     def test_error_response_has_error_field(self, client: APIClient) -> None:
         resp = self._post_with_route_error(
